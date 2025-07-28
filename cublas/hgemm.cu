@@ -1,13 +1,6 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <float.h>
-#include <vector>
-#include <algorithm>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
-#include <cuda_bf16.h>
-#include <cuda_fp8.h>
-#include <mma.h>
 #include <cublas_v2.h>
 
 static cublasHandle_t g_handle = nullptr;

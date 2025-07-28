@@ -9,6 +9,7 @@ setup(
             name="hgemm",
             sources=[
                 "cublas/hgemm.cu",
+                "kernel/naive_async.cu",
                 "pybind/binds.cpp"
             ],
         )
