@@ -9,7 +9,7 @@ DEVICE = torch.device("cuda:0")
 MAX = 8192
 STEP = 256
 
-Ms = [m for m in range(STEP, MAX, STEP)]
+Ms = [m for m in range(STEP, MAX+1, STEP)]
 Ns = Ms
 Ks = Ms
 
