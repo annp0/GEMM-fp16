@@ -35,7 +35,7 @@ template<const int WMMA_SIZE_M=16,
          const int WMMA_PER_WARP_N=4
          // 2x4 WMMA tiles
         >
-__global__ void hgemm_m16n16k16mma4x2_wp2x4(
+__global__ void hgemm_m16n16k16mma2x4_wp4x2(
   half* A, half* B, half* C,
   int M, int N, int K
 ){
@@ -50,7 +50,6 @@ __global__ void hgemm_m16n16k16mma4x2_wp2x4(
   // determine thread and warp
   int tid = threadIdx.y * blockDim.x + threadIdx.x;
   int warp_id = tid / WARP_SIZE;
-  int lane_id = tid % WARP_SIZE;
   // determine warp tile idx
   // 256 threads / 8 warps
   int warp_m = warp_id / 2; // 0, 1, 2, 3
@@ -76,7 +75,7 @@ __global__ void hgemm_m16n16k16mma4x2_wp2x4(
   for (int i=0; i<WMMA_PER_WARP_M; i++){
     #pragma unroll
     for (int j=0; j<WMMA_PER_WARP_N; j++){
-      wmma::fill_fragment(frag_C[i][j], 0.0);
+      wmma::fill_fragment(frag_C[i][j], __float2half(0.0f));
     }
   }
 
@@ -132,8 +131,62 @@ __global__ void hgemm_m16n16k16mma4x2_wp2x4(
       int store_g_C_m = b_y * BM + warp_m * (WMMA_SIZE_M * WMMA_PER_WARP_M) + i * WMMA_SIZE_M;
       int store_g_C_n = b_x * BN + warp_n * (WMMA_SIZE_N * WMMA_PER_WARP_N) + j * WMMA_SIZE_N;
       wmma::store_matrix_sync(C + store_g_C_m * N + store_g_C_n, frag_C[i][j],
-                              N, wmma::row_major);
+                              N, wmma::mem_row_major);
     }
   }
 }
-        
+
+// async copy, 2 buffers
+
+
+#include <torch/types.h>
+#include <torch/extension.h>
+
+#define CHECK_TORCH_TENSOR_DTYPE(T, th_type)                 \
+if(((T).options().dtype() != (th_type))) {                   \
+  std::cout << "Tensor Info:" << (T).options() << std::endl; \
+  throw std::runtime_error("values must be "#th_type);       \
+}
+
+#define CHECK_TORCH_TENSOR_SHAPE(T, S0, S1)           \
+if (((T).size(0) != (S0)) || ((T).size(1) != (S1))) { \
+  throw std::runtime_error("Tensor size mismatch!");  \
+}
+
+void hgemm_m16n16k16mma2x4_wp4x2(
+  torch::Tensor a, torch::Tensor b, torch::Tensor c) {
+  CHECK_TORCH_TENSOR_DTYPE(a, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(b, torch::kHalf)
+  CHECK_TORCH_TENSOR_DTYPE(c, torch::kHalf)
+  const int M = a.size(0);
+  const int K = a.size(1);
+  const int N = b.size(1); 
+  if (M % 128 != 0 || N % 128 != 0) {
+    throw std::runtime_error("M and N must be divisible by 128.");
+  }
+  CHECK_TORCH_TENSOR_SHAPE(a, M, K)
+  CHECK_TORCH_TENSOR_SHAPE(b, K, N)
+  CHECK_TORCH_TENSOR_SHAPE(c, M, N)
+  constexpr int WMMA_SIZE_M = 16;
+  constexpr int WMMA_SIZE_N = 16;
+  constexpr int WMMA_SIZE_K = 16;
+  constexpr int WARPS_PER_BLOCK_M = 4;
+  constexpr int WARPS_PER_BLOCK_N = 2; 
+  constexpr int WMMA_PER_WARP_M = 2;
+  constexpr int WMMA_PER_WARP_N = 4;
+  constexpr int NUM_THREADS= (WARPS_PER_BLOCK_M * WARPS_PER_BLOCK_N * WARP_SIZE);
+  dim3 block(NUM_THREADS);
+  dim3 grid((N / (WMMA_SIZE_N * WMMA_PER_WARP_N * WARPS_PER_BLOCK_N)), 
+            (M / (WMMA_SIZE_M * WMMA_PER_WARP_M * WARPS_PER_BLOCK_M)));
+ 
+  hgemm_m16n16k16mma2x4_wp4x2<WMMA_SIZE_M, WMMA_SIZE_N, WMMA_SIZE_K,
+                              WARPS_PER_BLOCK_M, WARPS_PER_BLOCK_N,
+                              WMMA_PER_WARP_M, WMMA_PER_WARP_N>
+                              <<<grid, block>>>
+                              (
+                                reinterpret_cast<half*>(a.data_ptr()),
+                                reinterpret_cast<half*>(b.data_ptr()),
+                                reinterpret_cast<half*>(c.data_ptr()),
+                                M, N, K
+                              );
+}

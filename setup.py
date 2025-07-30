@@ -10,6 +10,7 @@ setup(
             sources=[
                 "cublas/hgemm.cu",
                 "kernel/naive_async.cu",
+                "kernel/wmma.cu",
                 "pybind/binds.cpp"
             ],
         )
