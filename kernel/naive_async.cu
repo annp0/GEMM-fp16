@@ -208,6 +208,8 @@ void hgemm_bk32_th8x8_async(
   dim3 block(BN/TN, BM/TM);
   dim3 grid((N + BN - 1) / BN, (M + BM - 1) / BM);
 
+  // note: PAD must be multiples of 8,
+  // because float4 requires alignments on 16 byte boundaries
   hgemm_bk32_th8x8_async<
     BM, BN, BK, TM, TN, 8><<<grid, block>>>(
     reinterpret_cast<half*>(a.data_ptr()),
