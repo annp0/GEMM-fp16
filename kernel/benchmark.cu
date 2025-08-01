@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <time.h>
+#include <iostream>
 using namespace nvcuda;
 
 #define NO_TORCH_BINDING
@@ -93,6 +94,7 @@ void test_correctness(int M, int N, int K) {
     
     cudaDeviceSynchronize();
     cudaMemcpy(h_c_stages, d_c, size_c, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
 
     // === Test WMMA_BK32_ASYNC ===
     constexpr int BM_ASYNC = 128;
@@ -113,6 +115,7 @@ void test_correctness(int M, int N, int K) {
     hgemm_m16n16k16_bk32_async<<<gridDim_async, blockDim_async, SMEM_SIZE_ASYNC>>>(d_a, d_b, d_c, M, N, K);
     cudaDeviceSynchronize();
     cudaMemcpy(h_c_async, d_c, size_c, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
 
     // === Test cuBLAS ===
     cudaMemset(d_c, 0, size_c);
