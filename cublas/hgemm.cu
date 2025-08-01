@@ -56,6 +56,9 @@ void cublas_tensor_op_nn(
                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 }
 
+
+#ifndef NO_TORCH_BINDING
+
 #include <torch/types.h>
 #include <torch/extension.h>
 
@@ -90,3 +93,5 @@ void hgemm_cublas(
     M, N, K
   );
 }
+
+#endif

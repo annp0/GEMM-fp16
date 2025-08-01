@@ -13,3 +13,9 @@ wheels/
 .vscode
 
 hgemm.cpython*
+
+bench
+
+benchmark_results.csv
+
+tflops_*

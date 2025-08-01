@@ -11,6 +11,7 @@ setup(
                 "cublas/hgemm.cu",
                 "kernel/naive_async.cu",
                 "kernel/wmma.cu",
+                "kernel/wmma_stages.cu",
                 "pybind/binds.cpp"
             ],
         )

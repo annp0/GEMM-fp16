@@ -4,6 +4,8 @@ import signal
 import sys
 import pandas as pd
 
+# note: timing w/ torch might be inaccurate due to overhead
+
 DEVICE = torch.device("cuda:0")
 
 MAX = 8192
@@ -12,10 +14,6 @@ STEP = 256
 Ms = [m for m in range(STEP, MAX+1, STEP)]
 Ns = Ms
 Ks = Ms
-
-A = torch.randn((MAX, MAX), dtype=torch.half, device=DEVICE)
-B = torch.randn((MAX, MAX), dtype=torch.half, device=DEVICE)
-C = torch.randn((MAX, MAX), dtype=torch.half, device=DEVICE)
 
 handle_initialized = False
 
@@ -45,9 +43,9 @@ print("Device Memory:", specs.total_memory // (1024 ** 2), "MB\n")
 results = []
 
 for M, N, K in zip(Ms, Ns, Ks):
-  temp_A = A[:M, :K]
-  temp_B = B[:K, :N]
-  temp_C = C[:M, :N]
+  temp_A = torch.randn((M, K), dtype=torch.half, device=DEVICE)
+  temp_B = torch.randn((K, N), dtype=torch.half, device=DEVICE)
+  temp_C = torch.randn((M, N), dtype=torch.half, device=DEVICE)
 
   torch.cuda.synchronize()
   hgemm.hgemm_cublas(temp_A, temp_B, temp_C)
@@ -60,14 +58,19 @@ for M, N, K in zip(Ms, Ns, Ks):
   ms_cublas = start_event.elapsed_time(end_event)
 
   torch.cuda.synchronize()
-  hgemm.hgemm_bk32_th8x8_async(temp_A, temp_B, temp_C)
-  hgemm.hgemm_bk32_th8x8_async(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
   torch.cuda.synchronize()
   start_event.record()
-  hgemm.hgemm_bk32_th8x8_async(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
+  hgemm.hgemm_m16n16k16mma4x4_wp4x4_stages(temp_A, temp_B, temp_C)
   end_event.record()
   torch.cuda.synchronize()
   ms_custom = start_event.elapsed_time(end_event)
+  ms_custom = ms_custom / 5.0
 
   results.append({
       "N": M,
