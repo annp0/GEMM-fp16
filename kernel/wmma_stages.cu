@@ -49,12 +49,26 @@ void hgemm_m16n16k16mma4x4_wp4x4_stages(
   int M, int N, int K        
 ){
   // 512 threads, 16 warps per block
-  int b_x = blockIdx.x;
-  int b_y = blockIdx.y;
+  //int b_x = blockIdx.x;
+  //int b_y = blockIdx.y;
   // C tile: 256 x 256
   constexpr int BM = WMMA_SIZE_M * WMMA_PER_WARP_M * WARPS_PER_BLOCK_M;
   constexpr int BN = WMMA_SIZE_N * WMMA_PER_WARP_N * WARPS_PER_BLOCK_N;
   constexpr int BK = WMMA_SIZE_K;
+
+  
+  constexpr int GROUP_SIZE_M = 8;
+  int b_id = blockIdx.y * gridDim.x + blockIdx.x;
+  int num_blocks_m = (M + BM - 1) / BM;
+  int num_blocks_n = (N + BN - 1) / BN;
+  // Group-based remapping
+  int num_pid_in_group = GROUP_SIZE_M * num_blocks_n;
+  int group_id = b_id / num_pid_in_group;
+  int first_pid_m = group_id * GROUP_SIZE_M;
+  int group_size_m = min(num_blocks_m - first_pid_m, GROUP_SIZE_M);
+  // Column-major ordering within group for L2 cache optimization
+  int b_y = first_pid_m + ((b_id % num_pid_in_group) % group_size_m);
+  int b_x = (b_id % num_pid_in_group) / group_size_m;
   
   // declare dynamic shared memory, since we demand more than 48 KB
   extern __shared__ half s_mem[];
@@ -74,12 +88,6 @@ void hgemm_m16n16k16mma4x4_wp4x4_stages(
   // 2 thread loads a row of A (256 x 16, 512 threads)
   int load_s_A_m = tid / 2;
   int load_s_A_k = (tid % 2 == 0) ? 0 : 8;
-  // when writing into s_A
-  // th0 -> bank 0, 1, 2, 3
-  // th1 -> bank 4, 5, 6, 7
-  // th8 -> bank 0, 1, 2, 3 -- 4 way conflict / warp
-  // for s_B it is similar
-  // 32 thread loads a row of B (16 x 256, 32 x 16 = 512 threads)
   int load_s_B_k = tid / 32;
   int load_s_B_n = (tid % 32) * 8;
 
@@ -88,7 +96,7 @@ void hgemm_m16n16k16mma4x4_wp4x4_stages(
   // s_A: same as reading, 4 way conflicts.
   // s_B: each T takes 8 halfs in a column (2T/column) 
   // each column takes (1/2 banks) -> 32 way conflicts 
-  // padding would help ALOT. 
+  // Padding s_B is going to help ALOT.
 
   // calculate load offsets in GRAM
   int load_g_A_m = b_y * BM + load_s_A_m;
@@ -307,7 +315,7 @@ void hgemm_m16n16k16mma4x4_wp4x4_stages(
 
 }
 
-
+#ifndef NO_TORCH_BINDING
 
 
 #include <torch/types.h>
@@ -380,3 +388,4 @@ void hgemm_m16n16k16mma4x4_wp4x4_stages(
   );
 }
 
+#endif // NO_TORCH_BINDING
