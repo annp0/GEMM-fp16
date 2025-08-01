@@ -7,7 +7,11 @@
 
 // by default cp.async instructions go to the current async group buffer
 // calling cp.async.commit_group closes the curent group (push it into the queue) and starts a new one
-// wait group will wait for the first n commited groups. If n=0, it will wait for all groups.
+// https://docs.nvidia.com/cuda/parallel-thread-execution/
+// 9.7.9.25.3.3. Data Movement and Conversion Instructions: cp.async.wait_group
+// cp.async.wait_group instruction will cause executing thread to wait 
+// till only N or fewer of the most recent cp.async-groups are pending 
+// and all the prior cp.async-groups committed by the executing threads are complete.
 #define CP_ASYNC_COMMIT_GROUP() asm volatile("cp.async.commit_group;\n" ::)
 #define CP_ASYNC_WAIT_ALL() asm volatile("cp.async.wait_all;\n" ::)
 #define CP_ASYNC_WAIT_GROUP(n) asm volatile("cp.async.wait_group %0;\n" ::"n"(n))
@@ -25,7 +29,8 @@ template<const int BM=128,
          const int TM=8,
          const int TN=8,
          const int PAD=0>
-__global__ void hgemm_bk32_th8x8_async(
+__global__ __launch_bounds__(256) 
+void hgemm_bk32_th8x8_async(
   half* A, half* B, half* C,
   int M, int N, int K
 ){

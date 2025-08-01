@@ -13,7 +13,11 @@ using namespace nvcuda;
 
 // by default cp.async instructions go to the current async group buffer
 // calling cp.async.commit_group closes the curent group (push it into the queue) and starts a new one
-// wait group will wait for the first n commited groups. If n=0, it will wait for all groups.
+// https://docs.nvidia.com/cuda/parallel-thread-execution/
+// 9.7.9.25.3.3. Data Movement and Conversion Instructions: cp.async.wait_group
+// cp.async.wait_group instruction will cause executing thread to wait 
+// till only N or fewer of the most recent cp.async-groups are pending 
+// and all the prior cp.async-groups committed by the executing threads are complete.
 #define CP_ASYNC_COMMIT_GROUP() asm volatile("cp.async.commit_group;\n" ::)
 #define CP_ASYNC_WAIT_ALL() asm volatile("cp.async.wait_all;\n" ::)
 #define CP_ASYNC_WAIT_GROUP(n) asm volatile("cp.async.wait_group %0;\n" ::"n"(n))
@@ -35,7 +39,8 @@ template<const int WMMA_SIZE_M=16,
          const int WMMA_PER_WARP_N=4
          // 2x4 WMMA tiles
         >
-__global__ void hgemm_m16n16k16mma2x4_wp4x2(
+__global__ __launch_bounds__(256)
+void hgemm_m16n16k16mma2x4_wp4x2(
   half* A, half* B, half* C,
   int M, int N, int K
 ){
@@ -149,7 +154,8 @@ template<const int WMMA_SIZE_M=16,
          // 2x4 WMMA tiles
          const int PAD=0
         >
-__global__ void hgemm_m16n16k16mma2x4_wp4x2_async(
+__global__ __launch_bounds__(256) 
+void hgemm_m16n16k16mma2x4_wp4x2_async(
   half* A, half* B, half* C,
   int M, int N, int K
 ){
@@ -342,8 +348,8 @@ void hgemm_m16n16k16mma2x4_wp4x2(
   const int M = a.size(0);
   const int K = a.size(1);
   const int N = b.size(1); 
-  if (M % 128 != 0 || N % 128 != 0) {
-    throw std::runtime_error("M and N must be divisible by 128.");
+  if (M % 128 != 0 || N % 128 != 0 || K % 16 != 0) {
+    throw std::runtime_error("M and N must be divisible by 128. K must be divisible by 16.");
   }
   CHECK_TORCH_TENSOR_SHAPE(a, M, K)
   CHECK_TORCH_TENSOR_SHAPE(b, K, N)
@@ -380,8 +386,8 @@ void hgemm_m16n16k16mma2x4_wp4x2_async(
   const int M = a.size(0);
   const int K = a.size(1);
   const int N = b.size(1); 
-  if (M % 128 != 0 || N % 128 != 0) {
-    throw std::runtime_error("M and N must be divisible by 128.");
+  if (M % 128 != 0 || N % 128 != 0 || K % 16 != 0) {
+    throw std::runtime_error("M and N must be divisible by 128. K must be divisible by 16.");
   }
   CHECK_TORCH_TENSOR_SHAPE(a, M, K)
   CHECK_TORCH_TENSOR_SHAPE(b, K, N)
@@ -400,7 +406,7 @@ void hgemm_m16n16k16mma2x4_wp4x2_async(
  
   hgemm_m16n16k16mma2x4_wp4x2_async<WMMA_SIZE_M, WMMA_SIZE_N, WMMA_SIZE_K,
                               WARPS_PER_BLOCK_M, WARPS_PER_BLOCK_N,
-                              WMMA_PER_WARP_M, WMMA_PER_WARP_N, 0>
+                              WMMA_PER_WARP_M, WMMA_PER_WARP_N, 8>
                               <<<grid, block>>>
                               (
                                 reinterpret_cast<half*>(a.data_ptr()),
