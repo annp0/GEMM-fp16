@@ -6,6 +6,11 @@ HGEMM for Ampere Architecture and above (sm>=80). Comes with Torch bindings. Mai
 - using tensor cores (wmma API, m16n16k16) 
 - block swizzling for L2 cache locality
 
+Profiling has shown that there are two primary causes of warp stalls in the kernel:
+
+- Tensor core saturation (`math_pipe_throttle` on `HMMA.16816.F16`)
+- Thread Synchronization (`barrier` on `BAR`) 
+
 Performance is competitive with cuBLAS across a wide range of matrix sizes (benchmark run on NVIDIA RTX A6000):
 
 ![GEMM Performance Comparison](tflops_comparison.png)
